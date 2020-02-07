@@ -1,18 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
 using System.Net.Sockets;
 using System.Threading;
-using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
 using JetBrains.Annotations;
 using NLog;
 
 namespace ChatServer
 {
+    /// <summary>
+    /// Make sure to start asynchronously if other computation is needed.
+    /// </summary>
     [UsedImplicitly]
     internal class Server: IDisposable
     {
@@ -29,17 +30,10 @@ namespace ChatServer
             Logger.Info($"Initialized Server with port: {Port}");
             _server.Start();
 
-            // Run the listener in Background Thread
-            Task.Run(StartServer);
+            StartServer();
         }
 
-        private static void Main(string[] args)
-        {
-            using var server = new Server();
-            Console.Read();
-        }
-
-        private async Task StartServer()
+        private void StartServer()
         {
             try
             {
@@ -47,7 +41,7 @@ namespace ChatServer
                 while (true)
                 {
                     Logger.Debug("Listening for connection");
-                    var client = await _server.AcceptTcpClientAsync().ConfigureAwait(false);
+                    var client = _server.AcceptTcpClient();
                     lock(_clients) _clients.Add(clientCount, client);
                     Logger.Info($"Received Connection: {clientCount}");
 
@@ -90,19 +84,35 @@ namespace ChatServer
                 var stream = client.GetStream();
                 var buffer = new byte[1024];
 
-                var byteCount = stream.Read(buffer, 0, buffer.Length);
-
-                if (byteCount == 0)
+                try
                 {
-                    break;
-                }
+                    var byteCount = stream.Read(buffer, 0, buffer.Length);
+                    if (byteCount == 0)
+                    {
+                        break;
+                    }
 
-                var data = Encoding.ASCII.GetString(buffer, 0, byteCount);
-                Broadcast(data);
-                Logger.Info($"Broadcasted {data}");
+                    var data = Encoding.ASCII.GetString(buffer, 0, byteCount);
+                    Broadcast(data);
+                    Logger.Info($"Broadcasted {data}");
+                }
+                catch (IOException e)
+                {
+                    
+                    if (e.InnerException?.GetType() == typeof(SocketException))
+                    {
+                        Logger.Info($"Client {id} lost connection.");
+                        break;
+                    }
+
+                    Logger.Error("Unknown error");
+                    throw;
+
+                }
             }
 
             lock (_clients) _clients.Remove(id);
+            Logger.Info($"Client {id} disconnected");
             client.Client.Shutdown(SocketShutdown.Both);
             client.Close();
         }
