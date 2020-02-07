@@ -14,4 +14,10 @@
     <PackageReference Include="NLog.Extensions.Logging" Version="1.6.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="NLog.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

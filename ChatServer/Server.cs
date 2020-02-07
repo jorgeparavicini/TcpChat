@@ -1,9 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using JetBrains.Annotations;
 using NLog;
 
@@ -16,16 +20,17 @@ namespace ChatServer
 
         private const int Port = 6700;
         private readonly TcpListener _server;
+        private readonly Dictionary<int, TcpClient> _clients = new Dictionary<int, TcpClient>();
 
         public Server()
         {
-            Logger.Info("Initialized");
             var localAddress = IPAddress.Parse("127.0.0.1");
             _server = new TcpListener(localAddress, Port);
+            Logger.Info($"Initialized Server with port: {Port}");
             _server.Start();
 
             // Run the listener in Background Thread
-            Task.Run(StartListen);
+            Task.Run(StartServer);
         }
 
         private static void Main(string[] args)
@@ -34,59 +39,84 @@ namespace ChatServer
             Console.Read();
         }
 
-        private async Task StartListen()
+        private async Task StartServer()
         {
             try
             {
+                var clientCount = 1;
                 while (true)
                 {
-                    TcpClient client = null;
-                    try
+                    Logger.Debug("Listening for connection");
+                    var client = await _server.AcceptTcpClientAsync().ConfigureAwait(false);
+                    lock(_clients) _clients.Add(clientCount, client);
+                    Logger.Info($"Received Connection: {clientCount}");
+
+                    var count = clientCount;
+                    var clientThread = new Thread(() => HandleConnection(count))
                     {
-                        Logger.Debug("Waiting for a connection...");
-
-                        // Blocking call to accept requests
-                        client = await _server.AcceptTcpClientAsync().ConfigureAwait(false);
-                        Logger.Info($"Client Connected: {client}");
-
-                        // Get the stream object to read and write data.
-                        var stream = client.GetStream();
-
-                        var bytes = new byte[256];
-                        while (stream.DataAvailable)
-                        {
-                            var data = Encoding.ASCII.GetString(bytes, 0, stream.Read(bytes, 0, bytes.Length));
-                            Logger.Info($"Received: {data}");
-
-                            data = data.ToUpper(CultureInfo.CurrentCulture);
-
-                            var msg = Encoding.ASCII.GetBytes(data);
-                            await stream.WriteAsync(msg, 0, msg.Length).ConfigureAwait(false);
-
-                            Logger.Info($"Sent back: {data}");
-                        }
-
-                        Logger.Debug("Closing Stream");
-                        stream.Close();
-                    }
-                    finally
-                    {
-                        if (client != null && client.Connected)
-                        {
-                            Logger.Debug($"Closing client connection: {client}");
-                            client.Close();
-                        }
-                    }
+                        Name = $"TCP Client Thread: {clientCount}"
+                    };
+                    clientThread.Start();
+                    clientCount++;
                 }
             }
             catch (SocketException e)
             {
                 Logger.Error($"SocketException: {e}");
             }
+            catch (Exception e)
+            {
+                Logger.Fatal($"Caught unhandled exception: {e}");
+                throw;
+            }
             finally
             {
-                Logger.Info($"Closing server");
+                Logger.Info("Closing server");
                 _server.Stop();
+            }
+        }
+
+        private void HandleConnection(int id)
+        {
+            TcpClient client;
+
+            lock (_clients)
+            {
+                client = _clients[id];
+            }
+
+            while (true)
+            {
+                var stream = client.GetStream();
+                var buffer = new byte[1024];
+
+                var byteCount = stream.Read(buffer, 0, buffer.Length);
+
+                if (byteCount == 0)
+                {
+                    break;
+                }
+
+                var data = Encoding.ASCII.GetString(buffer, 0, byteCount);
+                Broadcast(data);
+                Logger.Info($"Broadcasted {data}");
+            }
+
+            lock (_clients) _clients.Remove(id);
+            client.Client.Shutdown(SocketShutdown.Both);
+            client.Close();
+        }
+
+        private void Broadcast(string data)
+        {
+            var buffer = Encoding.ASCII.GetBytes(data + Environment.NewLine);
+
+            lock (_clients)
+            {
+                foreach (var stream in _clients.Values.Select(client => client.GetStream()))
+                {
+                    stream.Write(buffer, 0, buffer.Length);
+                }
             }
         }
 
