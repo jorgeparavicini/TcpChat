@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29519.181
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChatServer", "TCPServer\ChatServer.csproj", "{F465CCD6-E8BF-4867-BEEE-E93D77E4216A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChatServer", "ChatServer\ChatServer.csproj", "{F465CCD6-E8BF-4867-BEEE-E93D77E4216A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChatClient", "TCPClient\ChatClient.csproj", "{7B716CD6-3EE5-45EA-8749-EA67A9FA195D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChatClient", "ChatClient\ChatClient.csproj", "{7B716CD6-3EE5-45EA-8749-EA67A9FA195D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
